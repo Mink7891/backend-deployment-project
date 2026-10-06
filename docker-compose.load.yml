@@ -1,0 +1,19 @@
+# Always combine with docker-compose.deploy.yml and a DISTINCT --project-name.
+# Monitoring uses its own volumes/ports; backups are excluded from this sandbox.
+services:
+  app:
+    environment:
+      PRICE_SOURCE: mock
+      DATABASE_URL: ${LOAD_DATABASE_URL:?Set LOAD_DATABASE_URL in .env.load}
+      REFRESH_INTERVAL_SECONDS: "30"
+  worker:
+    environment:
+      PRICE_SOURCE: mock
+      DATABASE_URL: ${LOAD_DATABASE_URL:?Set LOAD_DATABASE_URL in .env.load}
+      REFRESH_INTERVAL_SECONDS: "30"
+  db:
+    environment:
+      POSTGRES_DB: ${LOAD_POSTGRES_DB:-radar_load}
+  postgres_exporter:
+    environment:
+      DATA_SOURCE_URI: db:5432/${LOAD_POSTGRES_DB:-radar_load}?sslmode=disable

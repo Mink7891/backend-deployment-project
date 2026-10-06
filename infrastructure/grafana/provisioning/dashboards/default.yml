@@ -1,0 +1,11 @@
+apiVersion: 1
+providers:
+  - name: Game Radar
+    orgId: 1
+    folder: Game Radar
+    type: file
+    disableDeletion: true
+    editable: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards

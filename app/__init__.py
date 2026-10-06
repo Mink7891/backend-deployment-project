@@ -1,0 +1,1 @@
+"""GameRadar backend."""

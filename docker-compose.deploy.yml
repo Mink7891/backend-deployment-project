@@ -1,0 +1,168 @@
+# Deployment uses registry images only. Never build on the deployment host.
+x-app-environment: &app-environment
+  DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env}
+  API_KEY: ${API_KEY:?Set API_KEY in .env}
+  PRICE_SOURCE: ${PRICE_SOURCE:-cheapshark}
+  REFRESH_INTERVAL_SECONDS: ${REFRESH_INTERVAL_SECONDS:-3600}
+  REFRESH_MIN_INTERVAL_SECONDS: ${REFRESH_MIN_INTERVAL_SECONDS:-300}
+  CHEAPSHARK_BASE_URL: ${CHEAPSHARK_BASE_URL:-https://www.cheapshark.com/api/1.0}
+  CHEAPSHARK_USER_AGENT: ${CHEAPSHARK_USER_AGENT:-GameRadar-Educational/0.1}
+
+x-app: &app
+  image: ${IMAGE_REPOSITORY:?Set registry image repository}:${IMAGE_TAG:?Set immutable commit tag}
+  init: true
+  restart: unless-stopped
+  environment: *app-environment
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  read_only: true
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,size=32m
+
+services:
+  db:
+    image: postgres:17.11-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-radar}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-radar}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  app:
+    <<: *app
+    command: [sh, -c, 'alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000']
+    ports:
+      - "${APP_BIND_ADDRESS:-127.0.0.1}:${APP_PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+
+  worker:
+    <<: *app
+    command: [python, -m, app.worker]
+    depends_on:
+      db:
+        condition: service_healthy
+      app:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, python, -c, "import pathlib,time; p=pathlib.Path('/tmp/worker-heartbeat'); assert p.exists() and time.time()-p.stat().st_mtime < 120"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  postgres_exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.19.1
+    profiles: [monitoring]
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_URI: db:5432/${POSTGRES_DB:-radar}?sslmode=disable
+      DATA_SOURCE_USER: ${POSTGRES_USER:-radar}
+      DATA_SOURCE_PASS: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, 'http://127.0.0.1:9187/metrics']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  prometheus:
+    image: prom/prometheus:v3.13.2
+    profiles: [monitoring]
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+    volumes:
+      - ./infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+    depends_on:
+      app:
+        condition: service_healthy
+      postgres_exporter:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, 'http://127.0.0.1:9090/-/ready']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  grafana:
+    image: grafana/grafana:12.4.11
+    profiles: [monitoring]
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:?Set GRAFANA_PASSWORD in .env}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./infrastructure/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infrastructure/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, 'http://127.0.0.1:3000/api/health']
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  backup:
+    image: postgres:17.11-bookworm
+    profiles: [operations]
+    restart: unless-stopped
+    entrypoint: [bash, /opt/backup/backup-loop.sh]
+    environment:
+      PGHOST: db
+      PGUSER: ${POSTGRES_USER:-radar}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      PGDATABASE: ${POSTGRES_DB:-radar}
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
+      BACKUP_RETENTION_COUNT: ${BACKUP_RETENTION_COUNT:-7}
+    volumes:
+      - postgres_backups:/backups
+      - ./scripts:/opt/backup:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      app:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, bash, /opt/backup/backup-health.sh]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
+
+volumes:
+  postgres_data:
+  postgres_backups:
+  prometheus_data:
+  grafana_data:

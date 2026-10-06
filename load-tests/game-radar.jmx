@@ -1,0 +1,190 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jmeterTestPlan version="1.2" properties="5.0" jmeter="5.6.3">
+  <hashTree>
+    <TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="Game Radar: stepped API load" enabled="true">
+      <stringProp name="TestPlan.comments">Use PRICE_SOURCE=mock on an isolated deployment. Each user creates its own watchlist; all HTTP operations validate JSON.</stringProp>
+      <boolProp name="TestPlan.functional_mode">false</boolProp>
+      <boolProp name="TestPlan.serialize_threadgroups">false</boolProp>
+      <elementProp name="TestPlan.user_defined_variables" elementType="Arguments" guiclass="ArgumentsPanel" testclass="Arguments" enabled="true">
+        <collectionProp name="Arguments.arguments"/>
+      </elementProp>
+    </TestPlan>
+    <hashTree>
+      <ConfigTestElement guiclass="HttpDefaultsGui" testclass="ConfigTestElement" testname="API address" enabled="true">
+        <elementProp name="HTTPsampler.Arguments" elementType="Arguments"><collectionProp name="Arguments.arguments"/></elementProp>
+        <stringProp name="HTTPSampler.domain">${__P(host,localhost)}</stringProp>
+        <stringProp name="HTTPSampler.port">${__P(port,8001)}</stringProp>
+        <stringProp name="HTTPSampler.protocol">${__P(protocol,http)}</stringProp>
+        <stringProp name="HTTPSampler.connect_timeout">5000</stringProp>
+        <stringProp name="HTTPSampler.response_timeout">10000</stringProp>
+      </ConfigTestElement>
+      <hashTree/>
+      <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="JSON and API key" enabled="true">
+        <collectionProp name="HeaderManager.headers">
+          <elementProp name="Content-Type" elementType="Header"><stringProp name="Header.name">Content-Type</stringProp><stringProp name="Header.value">application/json</stringProp></elementProp>
+          <elementProp name="X-API-Key" elementType="Header"><stringProp name="Header.name">X-API-Key</stringProp><stringProp name="Header.value">${__P(api_key,)}</stringProp></elementProp>
+        </collectionProp>
+      </HeaderManager>
+      <hashTree/>
+      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Stepwise users" enabled="true">
+        <stringProp name="ThreadGroup.on_sample_error">stopthread</stringProp>
+        <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlPanel" testclass="LoopController" testname="Repeated reads" enabled="true">
+          <boolProp name="LoopController.continue_forever">false</boolProp>
+          <stringProp name="LoopController.loops">-1</stringProp>
+        </elementProp>
+        <stringProp name="ThreadGroup.num_threads">${__groovy((props.getProperty('threads'\,'10') as int) * (props.getProperty('steps'\,'3') as int))}</stringProp>
+        <stringProp name="ThreadGroup.ramp_time">0</stringProp>
+        <boolProp name="ThreadGroup.scheduler">true</boolProp>
+        <stringProp name="ThreadGroup.duration">${__groovy(props.getProperty('duration'\, ((props.getProperty('steps'\,'3') as int) * (props.getProperty('hold_seconds'\,'30') as int) + (props.getProperty('ramp'\,'5') as int)).toString()))}</stringProp>
+        <stringProp name="ThreadGroup.delay">0</stringProp>
+        <boolProp name="ThreadGroup.same_user_on_next_iteration">true</boolProp>
+      </ThreadGroup>
+      <hashTree>
+        <OnceOnlyController guiclass="OnceOnlyControllerGui" testclass="OnceOnlyController" testname="Each user creates its own data" enabled="true"/>
+        <hashTree>
+          <JSR223Timer guiclass="TestBeanGUI" testclass="JSR223Timer" testname="Start cohorts in steps" enabled="true">
+            <stringProp name="scriptLanguage">groovy</stringProp>
+            <stringProp name="parameters"/>
+            <stringProp name="cacheKey">true</stringProp>
+            <stringProp name="script"><![CDATA[
+if (vars.get('cohort_started') == 'true') return 0L
+int perStep = props.getProperty('threads', '10') as int
+int steps = props.getProperty('steps', '3') as int
+int hold = props.getProperty('hold_seconds', '30') as int
+int ramp = props.getProperty('ramp', '5') as int
+if (perStep < 1 || steps < 1 || hold < 1 || ramp < 0 || ramp >= hold) {
+    throw new IllegalArgumentException('threads/steps/hold must be positive and 0 <= ramp < hold_seconds')
+}
+vars.put('cohort_started', 'true')
+int user = ctx.getThreadNum()
+long stepDelay = (user.intdiv(perStep) * hold * 1000L)
+long rampDelay = Math.round((user % perStep) * ramp * 1000.0d / perStep)
+return stepDelay + rampDelay
+]]></stringProp>
+          </JSR223Timer>
+          <hashTree/>
+          <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="POST watchlist" enabled="true">
+            <elementProp name="HTTPsampler.Arguments" elementType="Arguments">
+              <collectionProp name="Arguments.arguments"><elementProp name="" elementType="HTTPArgument"><boolProp name="HTTPArgument.always_encode">false</boolProp><stringProp name="Argument.value">{"name":"jmeter-${__UUID()}"}</stringProp><stringProp name="Argument.metadata">=</stringProp></elementProp></collectionProp>
+            </elementProp>
+            <stringProp name="HTTPSampler.path">/watchlists</stringProp>
+            <stringProp name="HTTPSampler.method">POST</stringProp>
+            <boolProp name="HTTPSampler.postBodyRaw">true</boolProp>
+            <boolProp name="HTTPSampler.follow_redirects">false</boolProp>
+            <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+          </HTTPSamplerProxy>
+          <hashTree>
+            <JSONPostProcessor guiclass="JSONPostProcessorGui" testclass="JSONPostProcessor" testname="Extract watchlist ID" enabled="true">
+              <stringProp name="JSONPostProcessor.referenceNames">watchlist_id</stringProp>
+              <stringProp name="JSONPostProcessor.jsonPathExprs">$.id</stringProp>
+              <stringProp name="JSONPostProcessor.match_numbers">1</stringProp>
+              <stringProp name="JSONPostProcessor.defaultValues">NOT_FOUND</stringProp>
+            </JSONPostProcessor>
+            <hashTree/>
+            <JSR223Assertion guiclass="TestBeanGUI" testclass="JSR223Assertion" testname="Created watchlist contract" enabled="true">
+              <stringProp name="scriptLanguage">groovy</stringProp><stringProp name="cacheKey">true</stringProp>
+              <stringProp name="script"><![CDATA[
+try {
+    def data = new groovy.json.JsonSlurper().parseText(prev.getResponseDataAsString())
+    assert prev.getResponseCode() == '201'
+    assert data.id instanceof Number
+    assert data.name.startsWith('jmeter-')
+} catch (Throwable failure) {
+    AssertionResult.setFailure(true)
+    AssertionResult.setFailureMessage(failure.toString())
+}
+]]></stringProp>
+            </JSR223Assertion>
+            <hashTree/>
+          </hashTree>
+          <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="POST watchlist item" enabled="true">
+            <elementProp name="HTTPsampler.Arguments" elementType="Arguments">
+              <collectionProp name="Arguments.arguments"><elementProp name="" elementType="HTTPArgument"><boolProp name="HTTPArgument.always_encode">false</boolProp><stringProp name="Argument.value">{"game_id":"612","target_price":"5.00","steam_only":true}</stringProp><stringProp name="Argument.metadata">=</stringProp></elementProp></collectionProp>
+            </elementProp>
+            <stringProp name="HTTPSampler.path">/watchlists/${watchlist_id}/items</stringProp>
+            <stringProp name="HTTPSampler.method">POST</stringProp>
+            <boolProp name="HTTPSampler.postBodyRaw">true</boolProp>
+            <boolProp name="HTTPSampler.follow_redirects">false</boolProp>
+            <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+          </HTTPSamplerProxy>
+          <hashTree>
+            <JSR223Assertion guiclass="TestBeanGUI" testclass="JSR223Assertion" testname="Item persisted and Steam threshold reached" enabled="true">
+              <stringProp name="scriptLanguage">groovy</stringProp><stringProp name="cacheKey">true</stringProp>
+              <stringProp name="script"><![CDATA[
+try {
+    def data = new groovy.json.JsonSlurper().parseText(prev.getResponseDataAsString())
+    assert prev.getResponseCode() == '201'
+    assert data.id instanceof Number
+    assert data.game_id == '612'
+    assert data.steam_only == true
+    assert data.current_price == '3.99'
+    assert data.threshold_met == true
+} catch (Throwable failure) {
+    AssertionResult.setFailure(true)
+    AssertionResult.setFailureMessage(failure.toString())
+}
+]]></stringProp>
+            </JSR223Assertion>
+            <hashTree/>
+          </hashTree>
+        </hashTree>
+        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="GET watchlist summary" enabled="true">
+          <elementProp name="HTTPsampler.Arguments" elementType="Arguments"><collectionProp name="Arguments.arguments"/></elementProp>
+          <stringProp name="HTTPSampler.path">/watchlists/${watchlist_id}/summary</stringProp>
+          <stringProp name="HTTPSampler.method">GET</stringProp>
+          <boolProp name="HTTPSampler.follow_redirects">false</boolProp>
+          <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+        </HTTPSamplerProxy>
+        <hashTree>
+          <JSR223Assertion guiclass="TestBeanGUI" testclass="JSR223Assertion" testname="Summary business contract" enabled="true">
+            <stringProp name="scriptLanguage">groovy</stringProp><stringProp name="cacheKey">true</stringProp>
+            <stringProp name="script"><![CDATA[
+try {
+    def data = new groovy.json.JsonSlurper().parseText(prev.getResponseDataAsString())
+    assert prev.getResponseCode() == '200'
+    assert data.watchlist_id.toString() == vars.get('watchlist_id')
+    assert data.total_items == 1 && data.priced_items == 1
+    assert data.matched_count == 1
+    assert data.current_total == '3.99'
+    assert data.currency == 'USD' && data.source == 'mock'
+} catch (Throwable failure) {
+    AssertionResult.setFailure(true)
+    AssertionResult.setFailureMessage(failure.toString())
+}
+]]></stringProp>
+          </JSR223Assertion>
+          <hashTree/>
+        </hashTree>
+        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="GET price history" enabled="true">
+          <elementProp name="HTTPsampler.Arguments" elementType="Arguments"><collectionProp name="Arguments.arguments"/></elementProp>
+          <stringProp name="HTTPSampler.path">/games/612/history</stringProp>
+          <stringProp name="HTTPSampler.method">GET</stringProp>
+          <boolProp name="HTTPSampler.follow_redirects">false</boolProp>
+          <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+        </HTTPSamplerProxy>
+        <hashTree>
+          <JSR223Assertion guiclass="TestBeanGUI" testclass="JSR223Assertion" testname="History JSON contains observed prices" enabled="true">
+            <stringProp name="scriptLanguage">groovy</stringProp><stringProp name="cacheKey">true</stringProp>
+            <stringProp name="script"><![CDATA[
+try {
+    def data = new groovy.json.JsonSlurper().parseText(prev.getResponseDataAsString())
+    assert prev.getResponseCode() == '200'
+    assert data instanceof List && !data.isEmpty()
+    assert data.every { it.game_id == '612' && it.source == 'mock' && it.observed_at }
+    assert data.any { it.store_id == '1' && it.price == '3.99' }
+} catch (Throwable failure) {
+    AssertionResult.setFailure(true)
+    AssertionResult.setFailureMessage(failure.toString())
+}
+]]></stringProp>
+          </JSR223Assertion>
+          <hashTree/>
+        </hashTree>
+        <ConstantTimer guiclass="ConstantTimerGui" testclass="ConstantTimer" testname="Think time between requests" enabled="true">
+          <stringProp name="ConstantTimer.delay">${__P(think_ms,250)}</stringProp>
+        </ConstantTimer>
+        <hashTree/>
+      </hashTree>
+    </hashTree>
+  </hashTree>
+</jmeterTestPlan>
