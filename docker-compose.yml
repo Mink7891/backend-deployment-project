@@ -8,7 +8,7 @@ x-app-environment: &app-environment
   CHEAPSHARK_USER_AGENT: ${CHEAPSHARK_USER_AGENT:-GameRadar-Educational/0.1}
 
 x-app: &app
-  image: ${IMAGE_REPOSITORY:-game-radar}:${IMAGE_TAG:-dev}
+  image: game-radar:dev
   build:
     context: .
     target: runtime
@@ -42,7 +42,7 @@ services:
 
   app:
     <<: *app
-    command: [sh, -c, 'alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --no-access-log']
+    command: [sh, -c, 'alembic upgrade head && exec uvicorn main:app --host 0.0.0.0 --port 8000 --no-access-log']
     ports:
       - "${APP_BIND_ADDRESS:-127.0.0.1}:${APP_PORT:-8000}:8000"
     depends_on:
@@ -57,7 +57,7 @@ services:
 
   worker:
     <<: *app
-    command: [python, -m, app.worker]
+    command: [python, -m, game_radar.worker]
     depends_on:
       db:
         condition: service_healthy
@@ -70,101 +70,5 @@ services:
       retries: 3
       start_period: 30s
 
-  postgres_exporter:
-    image: quay.io/prometheuscommunity/postgres-exporter:v0.19.1
-    profiles: [monitoring]
-    restart: unless-stopped
-    environment:
-      DATA_SOURCE_URI: db:5432/${POSTGRES_DB:-radar}?sslmode=disable
-      DATA_SOURCE_USER: ${POSTGRES_USER:-radar}
-      DATA_SOURCE_PASS: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
-    depends_on:
-      db:
-        condition: service_healthy
-    healthcheck:
-      test: [CMD, wget, -q, -O, /dev/null, 'http://127.0.0.1:9187/metrics']
-      interval: 15s
-      timeout: 5s
-      retries: 5
-
-  prometheus:
-    image: prom/prometheus:v3.13.2
-    profiles: [monitoring]
-    restart: unless-stopped
-    command:
-      - --config.file=/etc/prometheus/prometheus.yml
-      - --storage.tsdb.path=/prometheus
-      - --storage.tsdb.retention.time=7d
-    volumes:
-      - ./infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus_data:/prometheus
-    ports:
-      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
-    depends_on:
-      app:
-        condition: service_healthy
-      postgres_exporter:
-        condition: service_healthy
-    healthcheck:
-      test: [CMD, wget, -q, -O, /dev/null, 'http://127.0.0.1:9090/-/ready']
-      interval: 15s
-      timeout: 5s
-      retries: 5
-
-  grafana:
-    image: grafana/grafana:12.4.11
-    profiles: [monitoring]
-    restart: unless-stopped
-    environment:
-      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:?Set GRAFANA_PASSWORD in .env}
-      GF_USERS_ALLOW_SIGN_UP: "false"
-      GF_AUTH_ANONYMOUS_ENABLED: "false"
-    volumes:
-      - grafana_data:/var/lib/grafana
-      - ./infrastructure/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./infrastructure/grafana/dashboards:/var/lib/grafana/dashboards:ro
-    ports:
-      - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
-    depends_on:
-      prometheus:
-        condition: service_healthy
-    healthcheck:
-      test: [CMD, wget, -q, -O, /dev/null, 'http://127.0.0.1:3000/api/health']
-      interval: 15s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
-
-  backup:
-    image: postgres:17.11-bookworm
-    profiles: [operations]
-    restart: unless-stopped
-    entrypoint: [bash, /opt/backup/backup-loop.sh]
-    environment:
-      PGHOST: db
-      PGUSER: ${POSTGRES_USER:-radar}
-      PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
-      PGDATABASE: ${POSTGRES_DB:-radar}
-      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
-      BACKUP_RETENTION_COUNT: ${BACKUP_RETENTION_COUNT:-7}
-    volumes:
-      - postgres_backups:/backups
-      - ./scripts:/opt/backup:ro
-    depends_on:
-      db:
-        condition: service_healthy
-      app:
-        condition: service_healthy
-    healthcheck:
-      test: [CMD, bash, /opt/backup/backup-health.sh]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 120s
-
 volumes:
   postgres_data:
-  postgres_backups:
-  prometheus_data:
-  grafana_data:

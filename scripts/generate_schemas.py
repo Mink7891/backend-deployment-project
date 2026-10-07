@@ -8,7 +8,7 @@ from pathlib import Path
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 CONTRACT = REPOSITORY / "doc" / "game-radar-api.yaml"
-OUTPUT = REPOSITORY / "app" / "schemas" / "game_radar_api.py"
+OUTPUT = REPOSITORY / "game_radar" / "schemas" / "game_radar_api.py"
 
 
 def generation_command(*, check: bool = False) -> list[str]:
@@ -27,19 +27,19 @@ def generation_command(*, check: bool = False) -> list[str]:
         "--output-model-type",
         "pydantic_v2.BaseModel",
         "--base-class",
-        "app.schemas.base.DTO",
+        "game_radar.schemas.base.DTO",
         "--base-class-map",
         json.dumps(
             {
-                "CreateWatchlistRequest": "app.schemas.base.CreateWatchlistRequestBase",
-                "UpdateItemRequest": "app.schemas.base.UpdateItemRequestBase",
+                "CreateWatchlistRequest": "game_radar.schemas.base.CreateWatchlistRequestBase",
+                "UpdateItemRequest": "game_radar.schemas.base.UpdateItemRequestBase",
             }
         ),
         "--type-overrides",
         json.dumps(
             {
                 "DecimalValue": "decimal.Decimal",
-                "MoneyTarget": "app.schemas.types.Money",
+                "MoneyTarget": "game_radar.schemas.types.Money",
             }
         ),
         "--snake-case-field",

@@ -1,16 +1,19 @@
+import asyncio
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import create_engine, pool
+from sqlalchemy import pool
+from sqlalchemy.engine import Connection
+from sqlalchemy.ext.asyncio import create_async_engine
 
-from app.config import get_settings
-from app.models import metadata
+from game_radar.config import settings
+from game_radar.database.models import Base
 
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
-target_metadata = metadata
-database_url = get_settings().database_url
+target_metadata = Base.metadata
+database_url = settings.DATABASE_URL
 
 
 def run_migrations_offline() -> None:
@@ -24,15 +27,21 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
-def run_migrations_online() -> None:
-    connectable = create_engine(database_url, poolclass=pool.NullPool)
-    with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
-        with context.begin_transaction():
-            context.run_migrations()
+def do_run_migrations(connection: Connection) -> None:
+    context.configure(connection=connection, target_metadata=target_metadata)
+    with context.begin_transaction():
+        context.run_migrations()
+
+
+async def run_migrations_online() -> None:
+    """Миграции через тот же async-драйвер asyncpg, что и приложение."""
+    connectable = create_async_engine(database_url, poolclass=pool.NullPool)
+    async with connectable.connect() as connection:
+        await connection.run_sync(do_run_migrations)
+    await connectable.dispose()
 
 
 if context.is_offline_mode():
     run_migrations_offline()
 else:
-    run_migrations_online()
+    asyncio.run(run_migrations_online())
