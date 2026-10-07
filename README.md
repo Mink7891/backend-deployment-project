@@ -6,7 +6,7 @@ Steam, собственная история наблюдений, сводка 
 
 Стек: Python 3.12, FastAPI, SQLAlchemy (async ORM), Alembic, PostgreSQL,
 Docker Compose. Архитектура: тонкий endpoint → frozen UseCase → Dispatcher →
-Handler → Repository, подробнее в [docs/architecture.md](docs/architecture.md).
+Handler → Repository.
 
 ## Что делает сервис
 
@@ -76,6 +76,4 @@ docker compose ps
 notifications → history. В mock ожидается Steam `3.99`, достигнутый порог `4.00`
 и одна запись журнала.
 
-API-контракт: [doc/game-radar-api.yaml](doc/game-radar-api.yaml) (OpenAPI 3.1.0),
-Pydantic-схемы генерирует `scripts/generate_schemas.py`. Ошибки возвращаются
-в формате Problem Details (RFC 9457).
+Ошибки возвращаются в формате Problem Details (RFC 9457).

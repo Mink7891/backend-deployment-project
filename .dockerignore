@@ -7,7 +7,6 @@
 venv
 .cache
 .local
-.ruff_cache
 **/__pycache__
 **/*.pyc
 docs

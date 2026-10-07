@@ -9,19 +9,9 @@ x-app-environment: &app-environment
 
 x-app: &app
   image: game-radar:dev
-  build:
-    context: .
-    target: runtime
-  init: true
+  build: .
   restart: unless-stopped
   environment: *app-environment
-  security_opt:
-    - no-new-privileges:true
-  cap_drop:
-    - ALL
-  read_only: true
-  tmpfs:
-    - /tmp:rw,noexec,nosuid,size=32m
 
 services:
   db:
@@ -42,7 +32,7 @@ services:
 
   app:
     <<: *app
-    command: [sh, -c, 'alembic upgrade head && exec uvicorn main:app --host 0.0.0.0 --port 8000 --no-access-log']
+    command: [sh, -c, 'alembic upgrade head && exec uvicorn main:app --host 0.0.0.0 --port 8000']
     ports:
       - "${APP_BIND_ADDRESS:-127.0.0.1}:${APP_PORT:-8000}:8000"
     depends_on:
@@ -59,16 +49,8 @@ services:
     <<: *app
     command: [python, -m, game_radar.worker]
     depends_on:
-      db:
-        condition: service_healthy
       app:
         condition: service_healthy
-    healthcheck:
-      test: [CMD, python, -c, "import pathlib,time; p=pathlib.Path('/tmp/worker-heartbeat'); assert p.exists() and time.time()-p.stat().st_mtime < 120"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
 
 volumes:
   postgres_data:

@@ -8,8 +8,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import time
-from pathlib import Path
 
 from game_radar.config import settings
 from game_radar.database.session import async_session_factory, close_db_session
@@ -19,20 +17,10 @@ from game_radar.usecases.refresh import RefreshAllWatchedGamesUseCase
 
 logger = logging.getLogger("game_radar.worker")
 
-# Файл-пульс для healthcheck контейнера worker'а.
-HEARTBEAT_PATH = Path("/tmp/worker-heartbeat")
-
-
-def touch_heartbeat() -> None:
-    HEARTBEAT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    HEARTBEAT_PATH.write_text(str(time.time()), encoding="utf-8")
-
-
 async def run() -> None:
     dispatcher = init_dispatcher()
     try:
         while True:
-            touch_heartbeat()
             try:
                 async with async_session_factory() as session:
                     result = await dispatcher.dispatch(RefreshAllWatchedGamesUseCase(), session)
