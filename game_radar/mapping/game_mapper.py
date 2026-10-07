@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from urllib.parse import quote, unquote
 
+from game_radar.config import settings
 from game_radar.database.models import GameModel, OfferModel, PriceSnapshotModel
 from game_radar.schemas.game_radar_api import (
     GameCard,
@@ -12,7 +13,7 @@ from game_radar.schemas.game_radar_api import (
     SnapshotResponse,
 )
 from game_radar.schemas.price_provider import ProviderGame
-from game_radar.services.pricing import STEAM_STORE_ID, PricingActions
+from game_radar.services.pricing import PricingActions
 
 
 def map_game_card(game: GameModel) -> GameCard:
@@ -28,7 +29,9 @@ def map_offer_response(game: GameModel, offer: OfferModel) -> OfferResponse:
     return OfferResponse(
         deal_id=offer.deal_id,
         store_id=offer.store_id,
-        store_name="Steam" if offer.store_id == STEAM_STORE_ID else f"Store {offer.store_id}",
+        store_name="Steam"
+        if offer.store_id == settings.STEAM_STORE_ID
+        else f"Store {offer.store_id}",
         price=offer.price,
         retail_price=offer.retail_price,
         savings=offer.savings,

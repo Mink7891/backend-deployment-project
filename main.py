@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
+from prometheus_fastapi_instrumentator import Instrumentator
 from starlette.exceptions import HTTPException
 
 from game_radar.app.main_api import main_router
@@ -50,6 +51,9 @@ app = FastAPI(
     ),
     lifespan=lifespan,
 )
+
+# Prometheus metrics: http_requests_total, http_request_duration_seconds и др.
+Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
 
 # Middleware
 app.add_middleware(RequestLoggingMiddleware)

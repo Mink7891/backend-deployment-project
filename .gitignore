@@ -20,3 +20,5 @@ Thumbs.db
 /.agents/skills/
 /.codex/skills/
 /.claude/skills/
+.venv-ci/
+reports/

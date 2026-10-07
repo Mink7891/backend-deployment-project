@@ -4,10 +4,8 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+from game_radar.config import settings
 from game_radar.database.models import GameModel, WatchlistItemModel, WatchlistModel
-
-STEAM_STORE_ID = "1"
-CURRENCY = "USD"
 
 
 class PricingActions:
@@ -20,7 +18,7 @@ class PricingActions:
             (
                 offer.price
                 for offer in game.offers
-                if not steam_only or offer.store_id == STEAM_STORE_ID
+                if not steam_only or offer.store_id == settings.STEAM_STORE_ID
             ),
             default=None,
         )

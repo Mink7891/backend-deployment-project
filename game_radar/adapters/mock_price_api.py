@@ -4,17 +4,9 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+from game_radar.config import settings
 from game_radar.errors import game_not_found
 from game_radar.schemas.price_provider import ProviderGame, ProviderOffer
-
-# game_id, название, Steam App ID, цена Steam, цена другого магазина, розничная цена
-_MOCK_GAMES = (
-    ("612", "LEGO Batman", "21000", "3.99", "2.99", "19.99"),
-    ("128", "BioShock", "7670", "7.49", "6.99", "19.99"),
-    ("101", "Portal 2", "620", "4.99", "3.99", "9.99"),
-)
-_STEAM_STORE_ID = "1"
-_OTHER_STORE_ID = "7"
 
 
 class MockPriceApi:
@@ -24,7 +16,12 @@ class MockPriceApi:
 
     def __init__(self) -> None:
         self.games: dict[str, ProviderGame] = {}
-        for game_id, title, steam_id, steam_price, other_price, retail in _MOCK_GAMES:
+        # game_id, название, Steam App ID, цена Steam, цена магазина 7, розничная цена
+        for game_id, title, steam_id, steam_price, other_price, retail in (
+            ("612", "LEGO Batman", "21000", "3.99", "2.99", "19.99"),
+            ("128", "BioShock", "7670", "7.49", "6.99", "19.99"),
+            ("101", "Portal 2", "620", "4.99", "3.99", "9.99"),
+        ):
             offers = tuple(
                 ProviderOffer(
                     deal_id=f"mock-{game_id}-{store_id}",
@@ -35,10 +32,7 @@ class MockPriceApi:
                         Decimal("0.000001")
                     ),
                 )
-                for store_id, price in (
-                    (_STEAM_STORE_ID, steam_price),
-                    (_OTHER_STORE_ID, other_price),
-                )
+                for store_id, price in ((settings.STEAM_STORE_ID, steam_price), ("7", other_price))
             )
             self.games[game_id] = ProviderGame(
                 id=game_id,

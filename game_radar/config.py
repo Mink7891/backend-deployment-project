@@ -1,4 +1,6 @@
 import os
+import tempfile
+from urllib.parse import quote
 
 from dotenv import load_dotenv
 
@@ -9,8 +11,17 @@ class Settings:
     def __init__(self) -> None:
         self.LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
 
-        # Драйвер asyncpg: postgresql+asyncpg://user:password@host:5432/db
-        self.DATABASE_URL = os.environ.get("DATABASE_URL", "")
+        # Те же переменные читает контейнер PostgreSQL в docker-compose.yml.
+        self.POSTGRES_USER = os.environ.get("POSTGRES_USER", "game_radar")
+        self.POSTGRES_PASSWORD = os.environ.get("POSTGRES_PASSWORD", "")
+        self.POSTGRES_DB = os.environ.get("POSTGRES_DB", "game_radar")
+        self.POSTGRES_HOST = os.environ.get("POSTGRES_HOST", "db")
+        self.POSTGRES_PORT = os.environ.get("POSTGRES_PORT", "5432")
+        # Драйвер asyncpg; если DATABASE_URL не задан, адрес собирается из POSTGRES_*.
+        self.DATABASE_URL = os.environ.get("DATABASE_URL") or (
+            f"postgresql+asyncpg://{quote(self.POSTGRES_USER)}:{quote(self.POSTGRES_PASSWORD)}"
+            f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+        )
 
         # Общий ключ доступа к операциям /games и /watchlists (заголовок X-API-Key).
         self.API_KEY = os.environ.get("API_KEY", "")
@@ -31,6 +42,18 @@ class Settings:
         # Сколько секунд сохранённые цены считаются свежими и не запрашиваются повторно.
         self.REFRESH_MIN_INTERVAL_SECONDS = int(
             os.environ.get("REFRESH_MIN_INTERVAL_SECONDS", "300")
+        )
+
+        # Идентификатор магазина Steam в CheapShark и валюта цен CheapShark.
+        self.STEAM_STORE_ID = os.environ.get("STEAM_STORE_ID", "1")
+        self.CURRENCY = os.environ.get("CURRENCY", "USD")
+
+        # Файл-пульс worker'а для healthcheck контейнера и период его обновления.
+        self.WORKER_HEARTBEAT_PATH = os.environ.get(
+            "WORKER_HEARTBEAT_PATH", os.path.join(tempfile.gettempdir(), "worker-heartbeat")
+        )
+        self.WORKER_HEARTBEAT_INTERVAL_SECONDS = int(
+            os.environ.get("WORKER_HEARTBEAT_INTERVAL_SECONDS", "30")
         )
 
 

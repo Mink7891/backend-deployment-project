@@ -9,5 +9,9 @@ venv
 .local
 **/__pycache__
 **/*.pyc
-docs
 *.sqlite*
+tests
+monitoring
+Jenkinsfile
+.venv-ci
+reports

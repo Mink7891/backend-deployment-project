@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+from game_radar.config import settings
 from game_radar.database.models import NotificationModel, WatchlistItemModel, WatchlistModel
 from game_radar.mapping.game_mapper import map_game_card
 from game_radar.schemas.game_radar_api import (
@@ -13,7 +14,7 @@ from game_radar.schemas.game_radar_api import (
     WatchlistDetails,
     WatchlistResponse,
 )
-from game_radar.services.pricing import CURRENCY, PricingActions
+from game_radar.services.pricing import PricingActions
 
 
 def map_watchlist_response(watchlist: WatchlistModel) -> WatchlistResponse:
@@ -51,7 +52,7 @@ def map_summary_response(watchlist: WatchlistModel, configured_source: str) -> S
         priced_items=len(available),
         matched_count=sum(PricingActions.threshold_met(item) for item in watchlist.items),
         current_total=sum(available, Decimal("0.00")),
-        currency=CURRENCY,
+        currency=settings.CURRENCY,
         source=PricingActions.summary_source(watchlist, configured_source),
     )
 
