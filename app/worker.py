@@ -8,9 +8,9 @@ import time
 from pathlib import Path
 
 from app.adapters.providers import get_provider
-from app.bootstrap import build_dispatcher
 from app.config import get_settings
 from app.db import engine
+from app.dependencies.dispatcher_register import build_dispatcher
 from app.log_config import configure_logging
 from app.usecases import RefreshAllWatchedGamesUseCase
 

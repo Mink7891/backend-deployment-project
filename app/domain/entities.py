@@ -80,12 +80,3 @@ class WatchlistSummary:
     current_total: Decimal
     currency: str
     source: str
-
-
-@dataclass(frozen=True)
-class RefreshResult:
-    refreshed_games: int
-    checked_items: int
-    matched_count: int
-    notifications_created: int
-    watchlist_id: int | None = None

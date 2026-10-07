@@ -20,12 +20,8 @@ from app.schemas.game_radar_api import (
 from app.schemas.internal import RefreshBatchResponse
 from app.schemas.types import GameId, Money
 
-# Preserve the previous shared base name for imports; all public models inherit DTO.
-ResponseModel = DTO
-
 __all__ = [
     "DTO",
-    "ResponseModel",
     "GameId",
     "Money",
     "AddItemRequest",

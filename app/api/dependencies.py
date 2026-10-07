@@ -29,4 +29,3 @@ def get_dispatcher() -> UseCaseDispatcher:
 
 
 DispatcherDependency = Annotated[UseCaseDispatcher, Depends(get_dispatcher)]
-SettingsDependency = Annotated[Settings, Depends(get_settings)]

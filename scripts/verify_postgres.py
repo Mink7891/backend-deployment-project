@@ -24,9 +24,9 @@ from sqlalchemy.exc import IntegrityError
 
 from app import models, usecases
 from app.adapters.providers import MockProvider
-from app.bootstrap import build_dispatcher
 from app.config import get_settings
 from app.db import engine
+from app.dependencies.dispatcher_register import build_dispatcher
 from app.exceptions import Conflict
 from app.repositories import create_repositories
 from app.schemas import AddItemRequest, CreateWatchlistRequest, UpdateItemRequest

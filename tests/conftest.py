@@ -66,8 +66,8 @@ def client(database, provider):
 
     from app.adapters.providers import get_provider
     from app.api.dependencies import get_dispatcher
-    from app.bootstrap import build_dispatcher
     from app.db import get_connection
+    from app.dependencies.dispatcher_register import build_dispatcher
     from app.main import app
 
     def test_connection():
