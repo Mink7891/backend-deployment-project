@@ -15,3 +15,5 @@ monitoring
 Jenkinsfile
 .venv-ci
 reports
+load-tests
+scripts

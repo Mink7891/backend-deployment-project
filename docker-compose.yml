@@ -1,5 +1,7 @@
 x-app: &app
-  image: game-radar:latest
+  # Локально образ собирается из Dockerfile; на машине деплоя IMAGE_NAME и IMAGE_TAG
+  # задаёт Jenkins, и образ скачивается из реестра.
+  image: ${IMAGE_NAME:-game-radar}:${IMAGE_TAG:-latest}
   build: .
   restart: unless-stopped
   # Все настройки приложения и их значения по умолчанию — в game_radar/config.py.
@@ -49,6 +51,31 @@ services:
       retries: 3
       start_period: 30s
 
+  backup:
+    image: postgres:17.11-bookworm
+    restart: unless-stopped
+    command: [sh, /scripts/backup.sh]
+    environment:
+      PGHOST: db
+      PGUSER: ${POSTGRES_USER:?Set POSTGRES_USER in .env}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      PGDATABASE: ${POSTGRES_DB:?Set POSTGRES_DB in .env}
+    volumes:
+      - ./scripts:/scripts:ro
+      - postgres_backups:/backups
+    depends_on:
+      db:
+        condition: service_healthy
+      app:
+        condition: service_healthy
+    healthcheck:
+      # Свежая копия (не старше 25 часов) должна существовать.
+      test: [CMD-SHELL, 'find /backups -name "*.sql.gz" -mmin -1500 | grep -q .']
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
   prometheus:
     image: prom/prometheus:v3.13.2
     restart: unless-stopped
@@ -94,5 +121,6 @@ services:
 
 volumes:
   postgres_data:
+  postgres_backups:
   prometheus_data:
   grafana_data:

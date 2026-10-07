@@ -1,17 +1,31 @@
-FROM python:3.12-slim
+# Этап 1: установка зависимостей в отдельное виртуальное окружение.
+FROM python:3.12-slim AS builder
 
-ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
-WORKDIR /app
-
-# Системный пользователь для запуска сервиса
-RUN addgroup --system app && adduser --system --ingroup app app
-
-# Сначала только зависимости — слой кешируется, пока requirements.txt не меняется
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+
+# Этап 2: итоговый образ — только окружение и код, без pip-кеша и файлов сборки.
+FROM python:3.12-slim AS runtime
+
+# Обновления безопасности ОС, чтобы Trivy не находил исправленные уязвимости базы.
+RUN apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PATH="/opt/venv/bin:$PATH"
+
+# Непривилегированный пользователь для запуска сервиса
+RUN addgroup --system app && adduser --system --ingroup app app
+
+WORKDIR /app
+
+COPY --from=builder /opt/venv /opt/venv
 COPY --chown=app:app main.py alembic.ini ./
 COPY --chown=app:app game_radar ./game_radar
 COPY --chown=app:app migrations ./migrations

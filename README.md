@@ -26,7 +26,7 @@ LEGO Batman — Steam `3.99`, BioShock — `7.49`, Portal 2 — `4.99`.
 ## Запуск в Docker Compose
 
 Нужны Git и Docker с Compose v2. Все компоненты описаны в `docker-compose.yml`:
-`db` (PostgreSQL), `app` (API), `worker`, `prometheus`, `grafana`.
+`db` (PostgreSQL), `app` (API), `worker`, `backup`, `prometheus`, `grafana`.
 
 ```powershell
 Copy-Item .env.example .env
@@ -55,19 +55,30 @@ docker compose ps
 Пароли и ключи передаются только через переменные окружения: `.env` указан
 в `.gitignore`, в репозитории лежит только шаблон `.env.example`.
 
+## Docker-образ
+
+`Dockerfile` многоэтапный: стадия `builder` ставит зависимости в виртуальное окружение,
+стадия `runtime` копирует только его и код. Приложение запускается от
+непривилегированного пользователя `app`.
+
 ## CI/CD (Jenkins)
 
 Пайплайн описан в `Jenkinsfile` и работает на двух машинах:
 
-- **машина 1 — Jenkins**: проверка кода и сборка Docker-образа;
-- **машина 2 — `DEPLOY_HOST`**: запуск всех контейнеров через `docker compose`.
+- **машина 1 — Jenkins**: проверка кода, сборка, сканирование и публикация образа,
+  генератор нагрузки JMeter;
+- **машина 2 — `DEPLOY_HOST`**: скачивает образ из реестра и запускает все контейнеры
+  через `docker compose`; образы на ней не собираются.
 
 | Стадия | Что делает |
 | --- | --- |
 | Lint & tests | `ruff check`, `ruff format --check`, `pytest`; ошибка останавливает пайплайн |
-| Build | `docker build` образа `game-radar` на машине 1 |
-| Deploy | по SSH копирует `docker-compose.yml` и `monitoring/`, пишет `.env` из Jenkins Credentials, переносит образ (`docker save` → `docker load`) и выполняет `docker compose up -d --wait` |
+| Build | `docker build` образа `IMAGE_NAME:<SHA коммита>` |
+| Trivy | сканирование образа; уязвимость уровня CRITICAL останавливает пайплайн |
+| Push | публикация образа в GitHub Container Registry с тегом коммита |
+| Deploy | по SSH копирует `docker-compose.yml`, `monitoring/`, `scripts/`, пишет `.env` из Jenkins Credentials, выполняет `docker compose pull` и `docker compose up -d --wait` |
 | Smoke | `GET http://DEPLOY_HOST:8000/health`, ожидается `"status":"ok"` |
+| Load test | JMeter в non-GUI режиме с машины 1, проверка порогов, HTML-отчёт в артефактах |
 
 Настройка Jenkins:
 
@@ -77,14 +88,68 @@ docker compose ps
    | ID | Тип | Назначение |
    | --- | --- | --- |
    | `deploy-ssh` | SSH Username with private key | доступ к машине деплоя |
+   | `registry-credentials` | Username with password | логин GitHub и токен с правами `write:packages` |
    | `postgres-password` | Secret text | пароль PostgreSQL |
    | `api-key` | Secret text | ключ `X-API-Key` |
    | `grafana-password` | Secret text | пароль администратора Grafana |
 
-3. В параметрах сборки укажите `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_PATH` и `PRICE_SOURCE`.
+3. В параметрах сборки укажите `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_PATH`, `IMAGE_NAME`.
 
-На машине Jenkins нужны `python3`, `docker` и `curl`; на машине деплоя — Docker
-с Compose v2 и SSH-доступ пользователя `DEPLOY_USER` к Docker.
+На машине Jenkins нужны `python3`, `docker`, `curl` и Apache JMeter 5.6 (`jmeter`
+в `PATH`); на машине деплоя — Docker с Compose v2 и SSH-доступ пользователя
+`DEPLOY_USER` к Docker.
+
+### Откат на предыдущую версию
+
+Каждая сборка публикует образ с тегом SHA своего коммита. Чтобы откатиться, запустите
+job с параметром `DEPLOY_TAG` = SHA предыдущего коммита (например, из `git log` или
+списка пакетов GitHub). Проверка, сборка и публикация пропускаются; машина деплоя
+скачивает указанный образ, перезапускает `app` и `worker` и проходит smoke-проверку.
+
+## Нагрузочное тестирование (JMeter)
+
+Тест-план `load-tests/game-radar.jmx`. Каждый виртуальный пользователь в цикле:
+создаёт список (`POST /watchlists`), добавляет игру (`POST /watchlists/{id}/items`),
+читает сводку, цены игры и журнал, затем удаляет список (`DELETE /watchlists/{id}`).
+Ответы проверяются по коду (Response Assertion) и содержимому (JSON Assertion).
+
+- Адрес и параметры передаются через `-J`: `host`, `port`, `threads`, `ramp`, `hold`;
+  ключ API — через файл свойств, созданный из Jenkins Credentials.
+- Ступенчатая нагрузка: три группы потоков стартуют с интервалом `hold` секунд —
+  `threads` → `2·threads` → `3·threads` пользователей (по умолчанию 5 → 10 → 15).
+- Генератор нагрузки — машина Jenkins, сервис — машина деплоя.
+- Сторонний API не нагружается: стадия выполняется только при `PRICE_SOURCE=mock`,
+  а setUp-группа плана останавливает тест, если `/health` сообщает другой источник цен.
+- `load-tests/check_results.py` завершает пайплайн ошибкой, если доля ошибок выше 1%
+  или p95 выше `P95_MS`.
+
+**Порог p95 = 1000 мс.** Сервис интерактивный: пользователь ждёт ответа в Swagger
+или клиенте. 1 секунда — общепринятая граница, до которой задержка не прерывает
+работу пользователя (Nielsen, «Response Times: The 3 Important Limits»). Все
+операции теста выполняются над локальной БД и заглушкой цен, без внешних вызовов,
+поэтому превышение секунды на 15 пользователях означает проблему самого сервиса.
+
+## Модули
+
+### Безопасность образов (Trivy)
+
+Стадия `Trivy` сканирует собранный образ (`aquasec/trivy` в Docker, ставить Trivy не
+нужно). При уязвимостях уровня CRITICAL пайплайн завершается ошибкой; отчёт
+сохраняется в артефактах (`reports/trivy.txt`).
+
+### Резервное копирование
+
+Контейнер `backup` раз в сутки делает дамп БД (`scripts/backup.sh`) в том
+`postgres_backups` и хранит 7 последних копий. Healthcheck проверяет, что свежая копия
+не старше 25 часов.
+
+Восстановление (на машине деплоя, в каталоге проекта):
+
+```bash
+docker compose exec backup ls -l /backups               # список копий
+docker compose exec backup sh /scripts/restore.sh       # из последней копии
+docker compose exec backup sh /scripts/restore.sh /backups/<файл>.sql.gz
+```
 
 ## Мониторинг
 
