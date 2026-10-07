@@ -47,6 +47,7 @@ pipeline {
                 sh '''
                     set -eu
                     uv sync --locked --group dev --python 3.12
+                    uv run --no-sync python scripts/generate_schemas.py --check
                     uv run --no-sync ruff check .
                     uv run --no-sync ruff format --check .
                     uv run --no-sync pytest --junitxml=reports/unit-tests.xml

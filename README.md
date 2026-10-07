@@ -4,10 +4,11 @@ Backend для отслеживания цен PC-игр: поиск, wishlist �
 Steam, собственная история наблюдений, сводка стоимости и журнал срабатывания
 порогов. Проект рассчитан на учебное развёртывание через Jenkins на двух машинах.
 
-Стек: Python 3.12, FastAPI, SQLAlchemy, Alembic, PostgreSQL, Docker Compose,
-Prometheus/Grafana, JMeter. Архитектура использует **Use Case pattern**: HTTP и
-worker вызывают сценарии приложения, а сценарии работают с портами репозиториев
-и провайдера. Расчёт цен и порогов находится в domain.
+Стек: Python 3.12, FastAPI, SQLAlchemy Core, Alembic, PostgreSQL, Docker Compose,
+Prometheus/Grafana, JMeter. **Use Case pattern** разделяет данные операции
+и её выполнение: frozen Command/Query → Dispatcher → Handler. Handler содержит
+бизнес-правила и управляет `Connection.begin()`; Repository выполняет Core SQL
+без commit/rollback. Pydantic DTO и dataclass Views отделены от таблиц.
 
 ## Что делает сервис
 
@@ -21,6 +22,8 @@ worker вызывают сценарии приложения, а сценари
 Цена возвращается строкой Decimal, например `"3.99"`; валюта — **USD**. CheapShark
 включает Steam, однако это не региональные рублёвые цены Steam. История начинается
 с наблюдений нашего сервиса. Ответы содержат источник `cheapshark` или `mock`.
+Сводка может вернуть `mixed`, если список содержит наблюдения разных источников
+после смены режима; источник конкретной игры и снимка сохраняется отдельно.
 
 `PRICE_SOURCE=mock` использует вымышленные фиксированные цены без внешних запросов:
 LEGO Batman — Steam `3.99`, BioShock — `7.49`, Portal 2 — `4.99`. Другие магазины
@@ -75,13 +78,14 @@ docker compose -p game-radar --profile monitoring --profile operations down
 
 ```powershell
 uv sync --locked --group dev --python 3.12
+uv run --no-sync python scripts/generate_schemas.py --check
 uv run --no-sync ruff check .
 uv run --no-sync ruff format --check .
 uv run --no-sync pytest -q
 ```
 
 Тесты создают отдельную SQLite в памяти и запрещают исходящие HTTP-запросы.
-Проверяются API/валидация/ключ, сценарии Use Case, Steam-фильтр и суммы,
+Проверяются API/валидация/ключ, команды и обработчики Use Case, Steam-фильтр и суммы,
 кэш и история, переходы порога и дедупликация, отказ провайдера, его HTTP-адаптер
 через MockTransport, метрики и JTL gate. Тесты не обращаются к рабочей БД.
 
@@ -93,7 +97,7 @@ $env:DATABASE_URL = 'sqlite+pysqlite:///./game-radar-dev.db'
 $env:API_KEY = [guid]::NewGuid().ToString('N') + [guid]::NewGuid().ToString('N')
 $env:PRICE_SOURCE = 'mock'
 uv run alembic upgrade head
-uv run uvicorn app.main:app --reload
+uv run uvicorn app.main:app --reload --no-access-log
 ```
 
 Для фонового обновления запустите `uv run python -m app.worker` в другом терминале
@@ -126,6 +130,16 @@ uv run uvicorn app.main:app --reload
 ```json
 {"game_id":"612","target_price":"4.00","steam_only":true}
 ```
+
+Канонический JSON согласованного API-контракта использует camelCase:
+`{"gameId":"612","targetPrice":"4.00","steamOnly":true}`. Прежние snake_case
+имена принимаются на входе; ответы используют camelCase. Схемы генерируются
+из [OpenAPI 3.1.0 контракта](doc/game-radar-api.yaml) через
+`scripts/generate_schemas.py`. Ошибки представлены как Problem Details.
+
+Таблицы `app/models/tables.py` генерируются sqlacodegen; инструкция и границы
+слоёв описаны в [архитектуре](docs/architecture.md). Генерация по миграции
+не заменяет проверку схемы на PostgreSQL.
 
 Swagger показывает схемы и позволяет пройти сценарий: поиск → wishlist → игра
 → summary → notifications → history. В mock ожидается Steam `3.99`, достигнутый
@@ -203,7 +217,8 @@ bash scripts/rollback.sh
 Вместо `FULL_COMMIT_SHA` нужен полный реальный SHA опубликованного образа.
 Rollback возвращает предыдущий образ; база не откатывается автоматически.
 Изменения схемы должны оставаться совместимыми с предыдущей версией приложения.
-Перед изменением схемы deploy делает резервную копию текущей БД.
+Перед обновлением уже развёрнутого production-стека deploy делает резервную
+копию текущей БД; при первой установке backup-сервис начинает после готовности схемы.
 
 ## Подготовка к сдаче
 
@@ -211,14 +226,24 @@ Rollback возвращает предыдущий образ; база не о�
 [работа двух участников](docs/team-plan.md), [Word-отчёт](docs/GameRadar-report.docx),
 [структура и материалы для дополнения отчёта](docs/report-outline.md).
 
-[Результаты локальной проверки](docs/local-verification.md): работающий Compose,
-PostgreSQL, восстановление резервной копии, Trivy и короткий smoke-прогон JMeter.
+[Результаты локальных проверок 6 и 7 октября](docs/local-verification.md): Compose,
+PostgreSQL, backup/restore, Trivy и короткий smoke-прогон JMeter **до рефакторинга
+7 октября на Core/Dispatcher/Handler**. Эти измерения не подтверждают новую
+сборку автоматически. 7 октября новая версия прошла 134 теста, Ruff,
+воспроизводимость кодогенерации, HTTP smoke, конкурентные проверки и Alembic
+check на PostgreSQL. Повторный Trivy: 0 CRITICAL; короткий JMeter: 338 запросов,
+0 ошибок, p95 26 мс, p99 2602 мс. Рабочие и нагрузочные сервисы после проверки
+остановлены; постоянные тома сохранены, временные тома нагрузки удалены.
+Двухмашинный CI и полная нагрузка остаются отдельными проверками.
 
 Код и конфигурации подготовлены. Для подтверждения уровня «отлично» требуется
 реальный успешный pipeline на двух разных машинах, JTL/HTML и графики нагрузки,
 демонстрация Trivy, backup/restore, rollback и изменения кода через CI/CD.
 Локальная проверка на одном компьютере не заменяет эти доказательства.
-Word-отчёт содержит схемы, листинги конфигураций, фактические локальные результаты
-и снимки Swagger/Grafana. Перед сдачей заполните поле преподавателя и добавьте
+Word-отчёт обновлён 7 октября: 31 страница со схемами новой архитектуры,
+листингами конфигураций и фактическими локальными результатами. Все страницы
+отрендерены и проверены, номера оглавления сверены с PDF. Измерения и снимки
+Swagger/Grafana 6 октября явно отделены от проверок новой Core-версии 7 октября.
+Перед сдачей заполните поле преподавателя и добавьте
 доказательства двухмашинного pipeline, полного нагрузочного испытания и отката,
 затем загрузите `.docx` в СДО.

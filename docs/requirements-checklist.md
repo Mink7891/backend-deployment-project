@@ -12,7 +12,9 @@
 | --- | --- | --- |
 | Полезный backend и собственная логика | Поиск, wishlist, пороги, история, журнал, сводка | Полный пользовательский сценарий Swagger |
 | Репозиторий GitHub/GitLab | Исходники этого проекта | Доступная ссылка на удалённый репозиторий |
-| Минимум одна БД | PostgreSQL, SQLAlchemy, Alembic | Записи и миграции в работающей БД |
+| Минимум одна БД | PostgreSQL, SQLAlchemy Core, Alembic, таблицы sqlacodegen | Записи, миграции и проверка metadata в БД |
+| Требуемый Use Case Pattern | Frozen Command/Query, DispatcherRegistrar, Handler на действие, общий Service, Core Repository, generated Pydantic DTO и dataclass Views | Команда без логики; транзакция в Handler; Repository без ORM/commit/rollback; тесты контрактов и маппинга |
+| Согласованный API-контракт | OpenAPI 3.1.0 в `doc/game-radar-api.yaml`, Pydantic codegen, camelCase ответы и Problem Details | Соответствие live OpenAPI контракту; aliases, ограничения и ошибки в тестах |
 | Docker и Compose | Dockerfile и Compose-конфигурации | Запуск всех компонентов командой Compose |
 | OpenAPI / Swagger | `/openapi.json`, `/docs` | Скриншот документации и запросов |
 | Секреты окружения | `.env.example`, исключение `.env` из Git | Конфигурация без раскрытия секретов |
@@ -34,11 +36,17 @@
 | Внешний API подменён на нагрузке | MockProvider, отдельный тестовый стек | `source=mock`, отсутствие внешних запросов |
 | Модуль 1 — Trivy | Сканирование образа | Artifact отчёта и остановка при CRITICAL |
 | Модуль 2 — Backup | Планировщик и restore-check | Архив, расписание, восстановление и сравнение данных |
-| Word-отчёт | `docs/report-outline.md` | Реальный `.docx`, загруженный в СДО |
+| Word-отчёт | `docs/GameRadar-report.docx`, план дополнений | Актуальный `.docx`, проверенная вёрстка, загрузка в СДО |
 | Вклад каждого участника | `docs/team-plan.md` | Коммиты и объяснение своей части |
 | Изменение кода через pipeline | Use Cases и автоматический деплой | Демонстрация изменения на защите |
 
 ## Что ещё надо подтвердить в реальной среде
+
+Измерения и снимки 6 октября относятся к исходной версии до Core-рефакторинга
+7 октября. Новая версия отдельно прошла 134 теста, Ruff, проверки кодогенерации,
+HTTP smoke, конкуренцию и Alembic check на PostgreSQL, Trivy с 0 CRITICAL
+и повторный короткий JMeter: 338 запросов, 0 ошибок, p95 26 мс, p99 2602 мс.
+Старые backup/restore и измерения не переносятся на новую сборку автоматически.
 
 1. Настроить две Linux-машины, Docker, Jenkins, реестр и Jenkins Credentials.
 2. Выполнить pipeline: линтер → тесты → сборка → Trivy → push → deploy → smoke → нагрузка.

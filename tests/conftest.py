@@ -10,12 +10,10 @@ os.environ["REFRESH_MIN_INTERVAL_SECONDS"] = "300"
 import httpx  # noqa: E402
 import pytest  # noqa: E402
 from sqlalchemy import create_engine, event  # noqa: E402
-from sqlalchemy.orm import Session  # noqa: E402
 from sqlalchemy.pool import StaticPool  # noqa: E402
 
-from app import models  # noqa: E402, F401
-from app.db import Base  # noqa: E402
-from app.providers import MockProvider  # noqa: E402
+from app.adapters.providers import MockProvider  # noqa: E402
+from app.models import metadata  # noqa: E402
 
 API_KEY = os.environ["API_KEY"]
 
@@ -46,15 +44,14 @@ def database():
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.close()
 
-    Base.metadata.create_all(engine)
+    metadata.create_all(engine)
     yield engine
     engine.dispose()
 
 
 @pytest.fixture
-def session(database):
-    with Session(database, expire_on_commit=False) as instance:
-        yield instance
+def connection_factory(database):
+    return database.connect
 
 
 @pytest.fixture
@@ -64,21 +61,24 @@ def provider():
 
 @pytest.fixture
 def client(database, provider):
+    from fastapi import Depends
     from fastapi.testclient import TestClient
 
-    from app.db import get_session
+    from app.adapters.providers import get_provider
+    from app.api.dependencies import get_dispatcher
+    from app.bootstrap import build_dispatcher
+    from app.db import get_connection
     from app.main import app
-    from app.providers import get_provider
 
-    def test_session():
-        with Session(database, expire_on_commit=False) as instance:
-            try:
-                yield instance
-            except Exception:
-                instance.rollback()
-                raise
+    def test_connection():
+        with database.connect() as connection:
+            yield connection
 
-    app.dependency_overrides[get_session] = test_session
+    def test_dispatcher(current_provider=Depends(get_provider)):
+        return build_dispatcher(database.connect, current_provider, cache_ttl_seconds=300)
+
+    app.dependency_overrides[get_connection] = test_connection
+    app.dependency_overrides[get_dispatcher] = test_dispatcher
     app.dependency_overrides[get_provider] = lambda: provider
     try:
         with TestClient(app, headers={"X-API-Key": API_KEY}) as instance:

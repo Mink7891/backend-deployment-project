@@ -3,9 +3,9 @@ from decimal import Decimal
 import httpx
 import pytest
 
-from app.application.exceptions import GameNotFound, ProviderUnavailable
+from app.adapters.providers import CheapSharkProvider, MockProvider
 from app.config import Settings
-from app.providers import CheapSharkProvider, MockProvider
+from app.exceptions import GameNotFound, ProviderUnavailable
 
 
 @pytest.fixture
@@ -23,7 +23,7 @@ def upstream(monkeypatch):
             return original_client(**kwargs)
 
         monkeypatch.setattr(httpx, "Client", client)
-        monkeypatch.setattr("app.providers.time.sleep", lambda _: None)
+        monkeypatch.setattr("app.adapters.providers.time.sleep", lambda _: None)
         settings = Settings(
             _env_file=None,
             database_url="sqlite+pysqlite:///:memory:",

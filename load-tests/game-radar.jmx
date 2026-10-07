@@ -99,7 +99,7 @@ try {
           </hashTree>
           <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="POST watchlist item" enabled="true">
             <elementProp name="HTTPsampler.Arguments" elementType="Arguments">
-              <collectionProp name="Arguments.arguments"><elementProp name="" elementType="HTTPArgument"><boolProp name="HTTPArgument.always_encode">false</boolProp><stringProp name="Argument.value">{"game_id":"612","target_price":"5.00","steam_only":true}</stringProp><stringProp name="Argument.metadata">=</stringProp></elementProp></collectionProp>
+              <collectionProp name="Arguments.arguments"><elementProp name="" elementType="HTTPArgument"><boolProp name="HTTPArgument.always_encode">false</boolProp><stringProp name="Argument.value">{"gameId":"612","targetPrice":"5.00","steamOnly":true}</stringProp><stringProp name="Argument.metadata">=</stringProp></elementProp></collectionProp>
             </elementProp>
             <stringProp name="HTTPSampler.path">/watchlists/${watchlist_id}/items</stringProp>
             <stringProp name="HTTPSampler.method">POST</stringProp>
@@ -115,10 +115,10 @@ try {
     def data = new groovy.json.JsonSlurper().parseText(prev.getResponseDataAsString())
     assert prev.getResponseCode() == '201'
     assert data.id instanceof Number
-    assert data.game_id == '612'
-    assert data.steam_only == true
-    assert data.current_price == '3.99'
-    assert data.threshold_met == true
+    assert data.gameId == '612'
+    assert data.steamOnly == true
+    assert data.currentPrice == '3.99'
+    assert data.thresholdMet == true
 } catch (Throwable failure) {
     AssertionResult.setFailure(true)
     AssertionResult.setFailureMessage(failure.toString())
@@ -142,10 +142,10 @@ try {
 try {
     def data = new groovy.json.JsonSlurper().parseText(prev.getResponseDataAsString())
     assert prev.getResponseCode() == '200'
-    assert data.watchlist_id.toString() == vars.get('watchlist_id')
-    assert data.total_items == 1 && data.priced_items == 1
-    assert data.matched_count == 1
-    assert data.current_total == '3.99'
+    assert data.watchlistId.toString() == vars.get('watchlist_id')
+    assert data.totalItems == 1 && data.pricedItems == 1
+    assert data.matchedCount == 1
+    assert data.currentTotal == '3.99'
     assert data.currency == 'USD' && data.source == 'mock'
 } catch (Throwable failure) {
     AssertionResult.setFailure(true)
@@ -170,8 +170,8 @@ try {
     def data = new groovy.json.JsonSlurper().parseText(prev.getResponseDataAsString())
     assert prev.getResponseCode() == '200'
     assert data instanceof List && !data.isEmpty()
-    assert data.every { it.game_id == '612' && it.source == 'mock' && it.observed_at }
-    assert data.any { it.store_id == '1' && it.price == '3.99' }
+    assert data.every { it.gameId == '612' && it.source == 'mock' && it.observedAt }
+    assert data.any { it.storeId == '1' && it.price == '3.99' }
 } catch (Throwable failure) {
     AssertionResult.setFailure(true)
     AssertionResult.setFailureMessage(failure.toString())

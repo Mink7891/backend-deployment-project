@@ -23,7 +23,7 @@ def main() -> None:
                 args.base_url.rstrip("/") + "/health", timeout=5
             ) as response:
                 body = json.load(response)
-            if args.expected_source and body.get("price_source") != args.expected_source:
+            if args.expected_source and body.get("priceSource") != args.expected_source:
                 raise ValueError("Readiness returned the wrong configured price source")
             print("Smoke passed: HTTP 200 and database-ready health response.")
             return

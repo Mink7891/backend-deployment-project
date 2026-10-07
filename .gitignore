@@ -30,3 +30,7 @@ load-tests/*.log
 load-tests/html-report/
 .DS_Store
 Thumbs.db
+# Architecture skills are personal local tools and must never be published.
+/skills/
+/.agents/skills/
+/.codex/skills/
